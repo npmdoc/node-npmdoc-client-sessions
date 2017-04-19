@@ -1,0 +1,421 @@
+<html><head></head><body><div class="apidocDiv">
+<style>
+/*csslint
+*/
+.apidocDiv {
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.apidocDiv a[href] {
+    color: #33f;
+    font-weight: bold;
+    text-decoration: none;
+}
+.apidocDiv a[href]:hover {
+    text-decoration: underline;
+}
+.apidocCodeCommentSpan {
+    background: #bbf;
+    color: #000;
+    display: block;
+}
+.apidocCodeKeywordSpan {
+    color: #d00;
+    font-weight: bold;
+}
+.apidocCodePre {
+    background: #eef;
+    border: 1px solid;
+    color: #777;
+    padding: 5px;
+    white-space: pre-wrap;
+}
+.apidocFooterDiv {
+    margin-top: 20px;
+    text-align: center;
+}
+.apidocModuleLi {
+    margin-top: 10px;
+}
+.apidocSectionDiv {
+    border-top: 1px solid;
+    margin-top: 20px;
+}
+.apidocSignatureSpan {
+    color: #777;
+    font-weight: bold;
+}
+</style>
+<h1>api documentation for
+    <a href="https://github.com/mozilla/node-client-sessions">client-sessions (v0.7.0)</a>
+</h1>
+<h4>secure sessions stored in cookies</h4>
+<div class="apidocSectionDiv"><a href="#apidoc.tableOfContents" id="apidoc.tableOfContents"><h1>table of contents</h1></a><ol>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.client-sessions">module client-sessions</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.client-sessions.client-sessions">
+            function <span class="apidocSignatureSpan"></span>client-sessions
+            <span class="apidocSignatureSpan">(opts)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <span class="apidocSignatureSpan">object <span class="apidocSignatureSpan">client-sessions.</span>util</span>
+
+        </li>
+
+    </ol></li>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.client-sessions.util">module client-sessions.util</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.client-sessions.util.computeHmac">
+            function <span class="apidocSignatureSpan">client-sessions.util.</span>computeHmac
+            <span class="apidocSignatureSpan">(opts, iv, ciphertext, duration, createdAt)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.client-sessions.util.decode">
+            function <span class="apidocSignatureSpan">client-sessions.util.</span>decode
+            <span class="apidocSignatureSpan">(opts, content)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.client-sessions.util.encode">
+            function <span class="apidocSignatureSpan">client-sessions.util.</span>encode
+            <span class="apidocSignatureSpan">(opts, content, duration, createdAt)</span>
+            </a>
+
+        </li>
+
+    </ol></li>
+
+</ol></div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.client-sessions" id="apidoc.module.client-sessions">module client-sessions</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.client-sessions.client-sessions" id="apidoc.element.client-sessions.client-sessions">
+        function <span class="apidocSignatureSpan"></span>client-sessions
+        <span class="apidocSignatureSpan">(opts)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function clientSessionFactory(opts) {
+  if (!opts) {
+    throw new Error("no options provided, some are required");
+  }
+
+  if (!(opts.secret || (opts.encryptionKey &amp;&amp; opts.signatureKey))) {
+    throw new Error("cannot set up sessions without a secret "+
+                    "or encryptionKey/signatureKey pair");
+  }
+
+  // defaults
+  opts.cookieName = opts.cookieName || "session_state";
+  opts.duration = opts.duration || 24*60*60*1000;
+  opts.activeDuration = 'activeDuration' in opts ?
+    opts.activeDuration : ACTIVE_DURATION;
+
+  var encAlg = opts.encryptionAlgorithm || DEFAULT_ENCRYPTION_ALGO;
+  encAlg = encAlg.toLowerCase();
+  if (!ENCRYPTION_ALGORITHMS[encAlg]) {
+    throw new Error('invalid encryptionAlgorithm, supported are: '+
+                    Object.keys(ENCRYPTION_ALGORITHMS).join(', '));
+  }
+  opts.encryptionAlgorithm = encAlg;
+
+  var sigAlg = opts.signatureAlgorithm || DEFAULT_SIGNATURE_ALGO;
+  sigAlg = sigAlg.toLowerCase();
+  if (!SIGNATURE_ALGORITHMS[sigAlg]) {
+    throw new Error('invalid signatureAlgorithm, supported are: '+
+                    Object.keys(SIGNATURE_ALGORITHMS).join(', '));
+  }
+  opts.signatureAlgorithm = sigAlg;
+
+  // set up cookie defaults
+  opts.cookie = opts.cookie || {};
+  if (typeof opts.cookie.httpOnly === 'undefined') {
+    opts.cookie.httpOnly = true;
+  }
+
+  // let's not default to secure just yet,
+  // as this depends on the socket being secure,
+  // which is tricky to determine if proxied.
+  /*
+  if (typeof(opts.cookie.secure) == 'undefined')
+    opts.cookie.secure = true;
+    */
+
+  setupKeys(opts);
+  keyConstraints(opts);
+
+  const propertyName = opts.requestKey || opts.cookieName;
+
+  return function clientSession(req, res, next) {
+    if (propertyName in req) {
+      return next(); //self aware
+    }
+
+    var cookies = new Cookies(req, res);
+    var rawSession;
+    try {
+      rawSession = new Session(req, res, cookies, opts);
+    } catch (x) {
+      // this happens only if there's a big problem
+      process.nextTick(function() {
+        next("client-sessions error: " + x.toString());
+      });
+      return;
+    }
+
+    Object.defineProperty(req, propertyName, {
+      get: function getSession() {
+        return rawSession.content;
+      },
+      set: function setSession(value) {
+        if (isObject(value)) {
+          rawSession.content = value;
+        } else {
+          throw new TypeError("cannot set client-session to non-object");
+        }
+      }
+    });
+
+
+    var writeHead = res.writeHead;
+    res.writeHead = function () {
+      rawSession.updateCookie();
+      return writeHead.apply(res, arguments);
+    };
+
+    next();
+  };
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+
+</div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.client-sessions.util" id="apidoc.module.client-sessions.util">module client-sessions.util</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.client-sessions.util.computeHmac" id="apidoc.element.client-sessions.util.computeHmac">
+        function <span class="apidocSignatureSpan">client-sessions.util.</span>computeHmac
+        <span class="apidocSignatureSpan">(opts, iv, ciphertext, duration, createdAt)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function computeHmac(opts, iv, ciphertext, duration, createdAt) {
+  var hmacAlg = hmacInit(opts.signatureAlgorithm, opts.signatureKey);
+
+  hmacAlg.update(iv);
+  hmacAlg.update(".");
+  hmacAlg.update(ciphertext);
+  hmacAlg.update(".");
+  hmacAlg.update(createdAt.toString());
+  hmacAlg.update(".");
+  hmacAlg.update(duration.toString());
+
+  return hmacAlg.digest();
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.client-sessions.util.decode" id="apidoc.element.client-sessions.util.decode">
+        function <span class="apidocSignatureSpan">client-sessions.util.</span>decode
+        <span class="apidocSignatureSpan">(opts, content)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function decode(opts, content) {
+  if (!opts.cookieName) {
+    throw new Error("cookieName option required");
+  }
+
+  // stop at any time if there's an issue
+  var components = content.split(".");
+  if (components.length !== 5) {
+    return;
+  }
+
+  setupKeys(opts);
+
+  var iv;
+  var ciphertext;
+  var hmac;
+
+  try {
+    iv = base64urldecode(components[0]);
+    ciphertext = base64urldecode(components[1]);
+    hmac = base64urldecode(components[4]);
+  } catch (ignored) {
+    cleanup();
+    return;
+  }
+
+  var createdAt = parseInt(components[2], 10);
+  var duration = parseInt(components[3], 10);
+
+  function cleanup() {
+    if (iv) {
+      zeroBuffer(iv);
+    }
+
+    if (ciphertext) {
+      zeroBuffer(ciphertext);
+    }
+
+    if (hmac) {
+      zeroBuffer(hmac);
+    }
+
+    if (expectedHmac) { // declared below
+      zeroBuffer(expectedHmac);
+    }
+  }
+
+  // make sure IV is right length
+  if (iv.length !== 16) {
+    cleanup();
+    return;
+  }
+
+  // check hmac
+  var expectedHmac = computeHmac(opts, iv, ciphertext, duration, createdAt);
+
+  if (!constantTimeEquals(hmac, expectedHmac)) {
+    cleanup();
+    return;
+  }
+
+  // decrypt
+  var cipher = crypto.createDecipheriv(
+    opts.encryptionAlgorithm,
+    opts.encryptionKey,
+    iv
+  );
+  var plaintext = cipher.update(ciphertext, 'binary', 'utf8');
+  plaintext += cipher.final('utf8');
+
+  var cookieName = plaintext.substring(0, plaintext.indexOf(COOKIE_NAME_SEP));
+  if (cookieName !== opts.cookieName) {
+    cleanup();
+    return;
+  }
+
+  var result;
+  try {
+    result = {
+      content: JSON.parse(
+        plaintext.substring(plaintext.indexOf(COOKIE_NAME_SEP) + 1)
+      ),
+      createdAt: createdAt,
+      duration: duration
+    };
+  } catch (ignored) {
+  }
+
+  cleanup();
+  return result;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.client-sessions.util.encode" id="apidoc.element.client-sessions.util.encode">
+        function <span class="apidocSignatureSpan">client-sessions.util.</span>encode
+        <span class="apidocSignatureSpan">(opts, content, duration, createdAt)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function encode(opts, content, duration, createdAt){
+  // format will be:
+  // iv.ciphertext.createdAt.duration.hmac
+
+  if (!opts.cookieName) {
+    throw new Error('cookieName option required');
+  } else if (String(opts.cookieName).indexOf(COOKIE_NAME_SEP) !== -1) {
+    throw new Error('cookieName cannot include "="');
+  }
+
+  setupKeys(opts);
+
+  duration = duration || 24*60*60*1000;
+  createdAt = createdAt || new Date().getTime();
+
+  // generate iv
+  var iv = crypto.randomBytes(16);
+
+  // encrypt with encryption key
+  var plaintext = new Buffer(
+    opts.cookieName + COOKIE_NAME_SEP + JSON.stringify(content),
+    'utf8'
+  );
+  var cipher = crypto.createCipheriv(
+    opts.encryptionAlgorithm,
+    opts.encryptionKey,
+    iv
+  );
+
+  var ciphertextStart = forceBuffer(cipher.update(plaintext));
+  zeroBuffer(plaintext);
+  var ciphertextEnd = forceBuffer(cipher.final());
+  var ciphertext = Buffer.concat([ciphertextStart, ciphertextEnd]);
+  zeroBuffer(ciphertextStart);
+  zeroBuffer(ciphertextEnd);
+
+  // hmac it
+  var hmac = computeHmac(opts, iv, ciphertext, duration, createdAt);
+
+  var result = [
+    base64urlencode(iv),
+    base64urlencode(ciphertext),
+    createdAt,
+    duration,
+    base64urlencode(hmac)
+  ].join('.');
+
+  zeroBuffer(iv);
+  zeroBuffer(ciphertext);
+  zeroBuffer(hmac);
+
+  return result;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+</div>
+
+<div class="apidocFooterDiv">
+    [ this document was created with
+    <a href="https://github.com/kaizhu256/node-utility2" target="_blank">utility2</a>
+    ]
+</div>
+</div>
+</body></html>
