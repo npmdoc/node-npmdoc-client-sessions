@@ -49,9 +49,9 @@
 <h1>api documentation for
     <a
 
-        href="https://github.com/mozilla/node-client-sessions"
+        href="https://github.com/mozilla/node-client-sessions#readme"
 
-    >client-sessions (v0.7.0)</a>
+    >client-sessions (v0.8.0)</a>
 </h1>
 <h4>secure sessions stored in cookies</h4>
 <div class="apidocSectionDiv"><a
@@ -163,11 +163,11 @@
   // let&#x27;s not default to secure just yet,
   // as this depends on the socket being secure,
   // which is tricky to determine if proxied.
-  /*
+<span class="apidocCodeCommentSpan">  /*
   if (typeof(opts.cookie.secure) == &#x27;undefined&#x27;)
     opts.cookie.secure = true;
     */
-
+</span>
   setupKeys(opts);
   keyConstraints(opts);
 
@@ -185,7 +185,7 @@
     } catch (x) {
       // this happens only if there&#x27;s a big problem
       process.nextTick(function() {
-        next(&#x22;client-sessions error: &#x22; + x.toString());
+        next(new Error(&#x22;client-sessions error: &#x22; + x.toString()));
       });
       return;
     }
@@ -245,7 +245,23 @@
 
   return hmacAlg.digest();
 }</pre></li>
-    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+    signatureKey: sixtyFourByteKey
+  };
+  var iv = new Buffer(&#x27;01234567890abcdef&#x27;,&#x27;binary&#x27;); // 128-bits
+  var ciphertext = new Buffer(&#x27;0123456789abcdef0123&#x27;,&#x27;binary&#x27;);
+  var duration = 876543210;
+  var createdAt = 1234567890;
+
+  return cookieSessions.util.<span class="apidocCodeKeywordSpan">computeHmac</span>(
+    opts, iv, ciphertext, duration, createdAt
+  ).toString(&#x27;base64&#x27;);
+};
+
+block[&#x27;equals test vector&#x27;] = function(val) {
+  assert.equal(val, HMAC_EXPECT[algo]);
+};
+...</pre></li>
     </ul>
 
 
@@ -348,7 +364,25 @@
   cleanup();
   return result;
 }</pre></li>
-    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+&#x22;encode &#x22; : function(err, req){
+  var result = cookieSessions.util.encode({cookieName: &#x27;session&#x27;, secret: &#x27;yo&#x27;}, {foo:&#x27;bar&#x27;});
+  var result_arr = result.split(&#x22;.&#x22;);
+  assert.equal(result_arr.length, 5);
+},
+&#x22;encode and decode - is object&#x22; : function(err, req){
+  var encoded = cookieSessions.util.encode({cookieName: &#x27;session&#x27;, secret: &#x27;yo&#x27;}, {foo:&#x27;bar&#x27;});
+  var decoded = cookieSessions.util.<span class="apidocCodeKeywordSpan">decode</span>({cookieName: &#x27;session&#x27;, secret: &#
+x27;yo&#x27;}, encoded);
+  assert.isObject(decoded);
+},
+&#x22;encode and decode - has all values&#x22; : function(err, req){
+  var encoded = cookieSessions.util.encode({cookieName: &#x27;session&#x27;, secret: &#x27;yo&#x27;}, {foo:&#x27;bar&#x27;, bar:&#
+x27;foo&#x27;});
+  var decoded = cookieSessions.util.decode({cookieName: &#x27;session&#x27;, secret: &#x27;yo&#x27;}, encoded);
+  assert.equal(decoded.content.foo, &#x27;bar&#x27;);
+  assert.equal(decoded.content.bar, &#x27;foo&#x27;);
+...</pre></li>
     </ul>
 
 
@@ -413,7 +447,24 @@
 
   return result;
 }</pre></li>
-    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    <li>example usage<pre class="apidocCodePre">...
+
+  var browser = createBrowser(app);
+  browser.get(&#x22;/foo&#x22;, function(res, $) {
+    browser.done();
+  });
+},
+&#x22;encode &#x22; : function(err, req){
+  var result = cookieSessions.util.<span class="apidocCodeKeywordSpan">encode</span>({cookieName: &#x27;session&#x27;, secret: &#
+x27;yo&#x27;}, {foo:&#x27;bar&#x27;});
+  var result_arr = result.split(&#x22;.&#x22;);
+  assert.equal(result_arr.length, 5);
+},
+&#x22;encode and decode - is object&#x22; : function(err, req){
+  var encoded = cookieSessions.util.encode({cookieName: &#x27;session&#x27;, secret: &#x27;yo&#x27;}, {foo:&#x27;bar&#x27;});
+  var decoded = cookieSessions.util.decode({cookieName: &#x27;session&#x27;, secret: &#x27;yo&#x27;}, encoded);
+  assert.isObject(decoded);
+...</pre></li>
     </ul>
 
 
